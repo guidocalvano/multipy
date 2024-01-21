@@ -1,4 +1,7 @@
 import numpy as np
+from typing import Callable
+from dataclasses import dataclass
+
 
 def count_ones(v):
 
@@ -179,6 +182,47 @@ def segmented_scan_kernel(values, segment_heads):
         is_completed[final_calculation_nodes] = np.maximum(is_completed[final_prior_nodes[final_calculation_nodes]], is_completed[final_calculation_nodes])
 
     return partial_scan_sum, is_completed
+
+
+@dataclass
+class GpuSpecs:
+    block_size: int
+    block_count: int
+
+
+def segmented_scan(values: np.array, segment_head_mask: np.array, gpu_specs: GpuSpecs, scan_strategy: Callable=segmented_scan_kernel):
+    blocked_partial_cumsums, blocked_partial_segment_masks = _calculate_blocked_partial_cumsums(values, segment_head_mask, scan_strategy, gpu_specs)
+    blocked_cumsums = _merge_partial_cumsums(blocked_partial_cumsums, blocked_partial_segment_masks, gpu_specs)
+
+    return np.reshape(blocked_cumsums, [-1])
+
+
+def _calculate_blocked_partial_cumsums(values: np.array, segmented_head_mask: np.array, gpu_specs: GpuSpecs, scan_strategy: Callable=segmented_scan_kernel):
+    blocked_values = np.reshape(values, [gpu_specs.block_size, -1])
+    blocked_segment_head_mask = np.reshape(segmented_head_mask, [gpu_specs.block_size, -1])
+
+    blocked_partial_cumsum = np.empty_like(blocked_values)
+    blocked_partial_segment_head_mask = np.empty_like(blocked_segment_head_mask)
+
+    for offset in range(0, blocked_values.shape[0], gpu_specs.block_count):
+
+        # this happens parallel in blocks on the gpu:
+        for i in range(offset, offset + block_count):
+
+            blocked_partial_cumsum[i], blocked_partial_segment_head_mask[i] = scan_strategy(blocked_values[i], blocked_segment_head_mask[i])
+
+    return blocked_partial_cumsum, blocked_partial_segment_head_mask
+
+def _merge_partial_cumsums(blocked_partial_cumsums: np.array, blocked_partial_segment_masks: np.array, gpu_specs: GpuSpecs):
+
+    block_sums = blocked_partial_cumsums[:, -1]
+    block_segment_masks = blocked_partial_segment_masks[:, -1]
+
+    block_cumsum = segmented_scan(block_sums, block_segment_masks, gpu_specs)
+
+    blocked_completed_cumsum = blocked_partial_cumsums + block_cumsum[: np.newaxis] * (1 - blocked_partial_segment_masks)
+
+    return np.reshape(blocked_completed_cumsum, [-1])
 
 
 if __name__ == '__main__':
