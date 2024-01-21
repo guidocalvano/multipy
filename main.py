@@ -224,6 +224,27 @@ def _merge_partial_cumsums(blocked_partial_cumsums: np.array, blocked_partial_se
 
     return np.reshape(blocked_completed_cumsum, [-1])
 
+def test_segmented_scan_one_block_no_segments():
+    values = np.ones([1024], dtype=np.int32)
+    cumsum_values = np.arange(1024, dtype=np.int32)
+
+
+def test_segmented_scan_one_block_segments():
+    values = np.ones([1024], dtype=np.int32)
+    cumsum_values = np.arange(1024, dtype=np.int32)
+
+
+
+def test_segmented_scan_two_blocks():
+    pass
+
+def test_segmented_scan_two_blocks():
+    pass
+
+def test_segmented_scan_more_than_gpu_block_count():
+    pass
+
+
 
 if __name__ == '__main__':
     print(scan_kernel(np.arange(1024))[:16])
